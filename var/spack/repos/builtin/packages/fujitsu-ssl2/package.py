@@ -4,6 +4,27 @@
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
 from spack.package import *
+from llnl.util.filesystem import HeaderList, LibraryList
+
+
+class FugakuClangLinkFlags(LibraryList):
+    """Provides *_flags for custom LLVM wrappers which take care of SSL2"""
+
+    def __init__(self, flags=[]):
+        self.files = list()
+        self.fugaku_clang_flags = flags
+
+    @property
+    def search_flags(self):
+        return ""
+
+    @property
+    def link_flags(self):
+        return "{0}".format(" ".join(self.fugaku_clang_flags))
+
+    @property
+    def ld_flags(self):
+        return "{0}".format(" ".join(self.fugaku_clang_flags))
 
 
 class FujitsuSsl2(Package):
@@ -22,7 +43,12 @@ class FujitsuSsl2(Package):
     provides("lapack")
     provides("scalapack")
 
-    requires("%fj")
+    requires(
+        "%fj",
+        "%clang@17:",
+        policy="one_of",
+        msg="currently only supports Fujitsu or Clang compilers",
+    )
 
     def install(self, spec, prefix):
         raise InstallError(
@@ -33,6 +59,11 @@ class FujitsuSsl2(Package):
     @property
     def blas_libs(self):
         spec = self.spec
+        if spec.satisfies("%clang"):
+            if "+parallel" in spec:
+                return FugakuClangLinkFlags(["-SSL2BLAMP"])
+            else:
+                return FugakuClangLinkFlags(["-SSL2"])
         libslist = []
         if spec.target == "a64fx":  # Build with SVE support
             if "+parallel" in spec:  # parallel
@@ -78,6 +109,11 @@ class FujitsuSsl2(Package):
     @property
     def scalapack_libs(self):
         spec = self.spec
+        if self.spec.satisfies("%clang"):
+            if "+parallel" in spec:
+                return FugakuClangLinkFlags(["-SSL2BLAMP", "-SCALAPACK"])
+            else:
+                return FugakuClangLinkFlags(["-SSL2", "-SCALAPACK"])
         libslist = []
         if spec.target == "a64fx":  # Build with SVE support
             libslist.append("libfjscalapacksve.so")
@@ -124,12 +160,22 @@ class FujitsuSsl2(Package):
         return libs
 
     def setup_dependent_build_environment(self, env, dependent_spec):
+        if self.spec.satisfies("%clang"):
+            return
         path = self.prefix.include
         env.append_flags("fcc_ENV", "-idirafter " + path)
         env.append_flags("FCC_ENV", "-idirafter " + path)
 
     @property
     def headers(self):
-        path = join_path(self.spec.prefix, "clang-comp")
-        headers = find_headers("cssl", path, recursive=True)
-        return headers
+        if self.spec.satisfies("%clang"):
+            headers = HeaderList([])
+            if "+parallel" in self.spec:
+                headers.add_macro("-SSL2BLAMP")
+            else:
+                headers.add_macro("-SSL2")
+            return headers
+        else:
+            path = join_path(self.spec.prefix, "clang-comp")
+            headers = find_headers("cssl", path, recursive=True)
+            return headers
