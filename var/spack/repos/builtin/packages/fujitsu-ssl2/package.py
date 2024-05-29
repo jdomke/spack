@@ -15,6 +15,21 @@ class FugakuClangLinkFlags(LibraryList):
         self.fugaku_clang_flags = flags
 
     @property
+    def libraries(self):
+        return self.files
+
+    @property
+    def names(self):
+        libslist = []
+        if "-SSL2BLAMP" in self.fugaku_clang_flags:
+            libslist.append("fjlapackexsve")
+        elif "-SSL2" in self.fugaku_clang_flags:
+            libslist.append("fjlapacksve")
+        if "-SCALAPACK" in self.fugaku_clang_flags:
+            libslist.append("fjscalapacksve")
+        return libslist
+
+    @property
     def search_flags(self):
         return ""
 
@@ -160,8 +175,16 @@ class FujitsuSsl2(Package):
         return libs
 
     def setup_dependent_build_environment(self, env, dependent_spec):
-        if self.spec.satisfies("%clang"):
-            return
+        spec = self.spec
+        if spec.satisfies("%clang"):
+            if "+parallel" in spec:
+                env.append_flags("fcc_ENV", "-SSL2BLAMP")
+                env.append_flags("FCC_ENV", "-SSL2BLAMP")
+                env.append_flags("frt_ENV", "-SSL2BLAMP")
+            else:
+                env.append_flags("fcc_ENV", "-SSL2")
+                env.append_flags("FCC_ENV", "-SSL2")
+                env.append_flags("frt_ENV", "-SSL2")
         path = self.prefix.include
         env.append_flags("fcc_ENV", "-idirafter " + path)
         env.append_flags("FCC_ENV", "-idirafter " + path)
